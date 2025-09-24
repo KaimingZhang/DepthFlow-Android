@@ -37,9 +37,11 @@ import net.engawapg.lib.zoomable.rememberZoomState
 import net.engawapg.lib.zoomable.zoomable
 import java.io.File
 import java.io.IOException
+import androidx.activity.result.ActivityResultLauncher
 
 class MainActivity : ComponentActivity() {
 
+    private lateinit var pickFileLauncher: ActivityResultLauncher<String>
     private var depthImageState = mutableStateOf<Bitmap?>(null)
     private var inferenceTimeState = mutableLongStateOf(0)
     private var progressState = mutableStateOf(false)
@@ -49,6 +51,20 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // 提前注册所有 launcher
+        pickFileLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+            uri?.let {
+                progressState.value = true
+                val bitmap = getFixedBitmap(it)
+                CoroutineScope(Dispatchers.Default).launch {
+                    val (depthMap, inferenceTime) = depthAnything.predict(bitmap)
+                    depthImageState.value = colormapInferno(depthMap)
+                    inferenceTimeState.longValue = inferenceTime
+                    withContext(Dispatchers.Main) { progressState.value = false }
+                }
+            }
+        }
 
         depthAnything = DepthAnything(this, selectedModelState.value)
 
@@ -189,9 +205,7 @@ class MainActivity : ComponentActivity() {
 
             Button(
                 onClick = {
-                    pickMediaLauncher.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                    )
+                    pickFileLauncher.launch("image/*")
                 }
             ) {
                 Text(text = "Select From Gallery")
